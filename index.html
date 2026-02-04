@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recipe Nutrition Analyzer</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useRef } = React;
+
+        // Lucide React icons as inline SVG components
+        const Camera = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
+                <circle cx="12" cy="13" r="3"></circle>
+            </svg>
+        );
+
+        const Plus = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        );
+
+        const Trash2 = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+        );
+
+        const Calculator = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+                <line x1="8" y1="6" x2="16" y2="6"></line>
+                <line x1="16" y1="14" x2="16" y2="18"></line>
+                <path d="M16 10h.01"></path>
+                <path d="M12 10h.01"></path>
+                <path d="M8 10h.01"></path>
+                <path d="M12 14h.01"></path>
+                <path d="M8 14h.01"></path>
+                <path d="M12 18h.01"></path>
+                <path d="M8 18h.01"></path>
+            </svg>
+        );
+
+        const RotateCcw = ({ size = 24 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+        );
+
+        const RecipeNutritionAnalyzer = () => {
+          const [ingredients, setIngredients] = useState([]);
+          const [servings, setServings] = useState(18);
+          const [isAnalyzing, setIsAnalyzing] = useState(false);
+          const [nutritionData, setNutritionData] = useState(null);
+          const [mealPatternData, setMealPatternData] = useState(null);
+          const fileInputRef = useRef(null);
+
+          const analyzeImage = async (file) => {
+            setIsAnalyzing(true);
+            
+            try {
+              const base64Image = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+              });
+
+              const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'claude-sonnet-4-20250514',
+                  max_tokens: 1000,
+                  messages: [{
+                    role: 'user',
+                    content: [
+                      {
+                        type: 'image',
+                        source: {
+                          type: 'base64',
+                          media_type: file.type,
+                          data: base64Image
+                        }
+                      },
+                      {
+                        type: 'text',
+                        text: `Analyze this image and extract any visible food ingredients, quantities, and measurements. Return ONLY a JSON array of ingredients with this exact structure:
+[{"name": "ingredient name", "quantity": number, "unit": "unit of measure"}]
+
+If you see a recipe or ingredient list, extract all ingredients. If it's a photo of food, identify the main ingredients you can see. Be specific with quantities if visible, otherwise use reasonable estimates.`
+                      }
+                    ]
+                  }]
+                })
+              });
+
+              const data = await response.json();
+              const textContent = data.content
+                .filter(item => item.type === 'text')
+                .map(item => item.text)
+                .join('\n');
+              
+              const cleanedText = textContent.replace(/```json\n?|\n?```/g, '').trim();
+              const parsedIngredients = JSON.parse(cleanedText);
+              
+              setIngredients(parsedIngredients);
+            } catch (error) {
+              console.error('Error analyzing image:', error);
+              alert('Failed to analyze image. Please try again or add ingredients manually.');
+            } finally {
+              setIsAnalyzing(false);
+            }
+          };
+
+          const handleImageUpload = (e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              analyzeImage(file);
+            }
+          };
+
+          const addIngredient = () => {
+            setIngredients([...ingredients, { name: '', quantity: '', unit: 'oz' }]);
+          };
+
+          const updateIngredient = (index, field, value) => {
+            const updated = [...ingredients];
+            updated[index][field] = value;
+            setIngredients(updated);
+          };
+
+          const removeIngredient = (index) => {
+            setIngredients(ingredients.filter((_, i) => i !== index));
+          };
+
+          const resetApp = () => {
+            setIngredients([]);
+            setServings(18);
+            setNutritionData(null);
+            setMealPatternData(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+          };
+
+          const calculateNutrition = async () => {
+            setIsAnalyzing(true);
+            
+            try {
+              const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'claude-sonnet-4-20250514',
+                  max_tokens: 1000,
+                  messages: [{
+                    role: 'user',
+                    content: `Given these ingredients and ${servings} servings, calculate the nutrition facts and meal pattern crediting.
+
+Ingredients: ${JSON.stringify(ingredients)}
+
+Return ONLY valid JSON with this exact structure (no other text):
+{
+  "nutrition": {
+    "calories": number,
+    "totalFat": number,
+    "saturatedFat": number,
+    "transFat": number,
+    "sodium": number,
+    "carbohydrates": number,
+    "fiber": number,
+    "sugars": number,
+    "addedSugars": number
+  },
+  "mealPattern": {
+    "fruits": number,
+    "vegetablesDarkGreen": number,
+    "vegetablesRedOrange": number,
+    "vegetablesLegumes": number,
+    "vegetablesStarchy": number,
+    "vegetablesOther": number,
+    "vegetablesAdditional": number,
+    "grains": number,
+    "meatAlternatives": number,
+    "fluidMilk": number
+  }
+}
+
+All values should be per serving. Use standard USDA nutrition data and meal pattern crediting guidelines.`
+                  }]
+                })
+              });
+
+              const data = await response.json();
+              const textContent = data.content
+                .filter(item => item.type === 'text')
+                .map(item => item.text)
+                .join('\n');
+              
+              const cleanedText = textContent.replace(/```json\n?|\n?```/g, '').trim();
+              const result = JSON.parse(cleanedText);
+              
+              setNutritionData(result.nutrition);
+              setMealPatternData(result.mealPattern);
+            } catch (error) {
+              console.error('Error calculating nutrition:', error);
+              alert('Failed to calculate nutrition. Please check your ingredients and try again.');
+            } finally {
+              setIsAnalyzing(false);
+            }
+          };
+
+          const formatFraction = (decimal) => {
+            if (decimal === 0) return '0';
+            
+            const fractions = {
+              0.125: '⅛',
+              0.25: '¼',
+              0.333: '⅓',
+              0.375: '⅜',
+              0.5: '½',
+              0.625: '⅝',
+              0.666: '⅔',
+              0.75: '¾',
+              0.875: '⅞'
+            };
+            
+            const whole = Math.floor(decimal);
+            const remainder = decimal - whole;
+            
+            let fractionStr = '';
+            let closestDiff = 1;
+            
+            for (let [dec, frac] of Object.entries(fractions)) {
+              const diff = Math.abs(remainder - parseFloat(dec));
+              if (diff < closestDiff) {
+                closestDiff = diff;
+                fractionStr = frac;
+              }
+            }
+            
+            if (closestDiff > 0.05) {
+              return decimal.toFixed(2);
+            }
+            
+            return whole > 0 ? `${whole}${fractionStr ? ' ' + fractionStr : ''}` : fractionStr;
+          };
+
+          return (
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+              <div className="max-w-6xl mx-auto">
+                <div className="bg-white rounded-lg shadow-xl p-8 mb-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h1 className="text-3xl font-bold text-gray-800">Recipe Nutrition Analyzer</h1>
+                    {(ingredients.length > 0 || nutritionData || mealPatternData) && (
+                      <button
+                        onClick={resetApp}
+                        className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        <RotateCcw size={18} />
+                        Reset App
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="mb-6">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isAnalyzing}
+                      className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
+                    >
+                      <Camera size={20} />
+                      {isAnalyzing ? 'Analyzing Image...' : 'Take/Upload Photo of Recipe'}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Number of Servings
+                    </label>
+                    <input
+                      type="number"
+                      value={servings}
+                      onChange={(e) => setServings(parseInt(e.target.value) || 1)}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-md"
+                      min="1"
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-semibold text-gray-800">Ingredients</h2>
+                      <button
+                        onClick={addIngredient}
+                        className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <Plus size={18} />
+                        Add Ingredient
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {ingredients.map((ingredient, index) => (
+                        <div key={index} className="flex gap-3 items-center">
+                          <input
+                            type="text"
+                            placeholder="Ingredient name"
+                            value={ingredient.name}
+                            onChange={(e) => updateIngredient(index, 'name', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Qty"
+                            value={ingredient.quantity}
+                            onChange={(e) => updateIngredient(index, 'quantity', e.target.value)}
+                            className="w-24 px-3 py-2 border border-gray-300 rounded-md"
+                          />
+                          <select
+                            value={ingredient.unit}
+                            onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
+                            className="w-32 px-3 py-2 border border-gray-300 rounded-md"
+                          >
+                            <option value="oz">oz</option>
+                            <option value="lbs">lbs</option>
+                          </select>
+                          <button
+                            onClick={() => removeIngredient(index)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={calculateNutrition}
+                    disabled={isAnalyzing || ingredients.length === 0}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors w-full justify-center"
+                  >
+                    <Calculator size={20} />
+                    {isAnalyzing ? 'Calculating...' : 'Calculate Nutrition & Meal Pattern'}
+                  </button>
+                </div>
+
+                {mealPatternData && (
+                  <div className="bg-white rounded-lg shadow-xl p-8 mb-6">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4">Food Groups/Meal Patterns</h2>
+                    <p className="text-sm text-gray-600 mb-4">Based on default serving size and measure.</p>
+                    
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="border border-gray-300 px-4 py-2 text-left">Meal Pattern</th>
+                          <th className="border border-gray-300 px-4 py-2 text-left">Amount Per Serving</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Fruits</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.fruits)} cups</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Vegetables, Dark Green</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.vegetablesDarkGreen)} cups</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Vegetables, Red/Orange</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.vegetablesRedOrange)} cups</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Vegetables, Legumes</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.vegetablesLegumes)} cups</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Vegetables, Starchy</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.vegetablesStarchy)} cups</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Vegetables, Other</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.vegetablesOther)} cups</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Vegetables, Additional</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.vegetablesAdditional)} cups</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Grains</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.grains)} oz eq</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Meat/Meat Alternatives</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.meatAlternatives)} oz eq</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Fluid Milk</td>
+                          <td className="border border-gray-300 px-4 py-2">{formatFraction(mealPatternData.fluidMilk)} cups</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {nutritionData && (
+                  <div className="bg-white rounded-lg shadow-xl p-8">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4">Nutrition Facts</h2>
+                    <p className="text-sm text-gray-600 mb-4">Based on default serving size and measure.</p>
+                    
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="border border-gray-300 px-4 py-2 text-left">Nutrients</th>
+                          <th className="border border-gray-300 px-4 py-2 text-left">Serving</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Calories</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.calories.toFixed(2)} kcal</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Total Fat</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.totalFat.toFixed(2)} gm</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Saturated Fat</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.saturatedFat.toFixed(2)} gm</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Trans Fat</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.transFat.toFixed(2)}* gm</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Sodium</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.sodium.toFixed(2)} mg</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Carbohydrates</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.carbohydrates.toFixed(2)} gm</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Fiber</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.fiber.toFixed(2)} gm</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="border border-gray-300 px-4 py-2">Sugars</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.sugars.toFixed(2)}* gm</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-4 py-2">Added Sugars</td>
+                          <td className="border border-gray-300 px-4 py-2">{nutritionData.addedSugars.toFixed(2)}* gm</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p className="text-xs text-gray-500 mt-4">*May vary depending on individual product(s) used in recipe.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        ReactDOM.render(<RecipeNutritionAnalyzer />, document.getElementById('root'));
+    </script>
+</body>
+</html>
