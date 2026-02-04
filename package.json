@@ -1,0 +1,17 @@
+{
+  "name": "recipe-analyzer",
+  "version": "1.0.0",
+  "description": "Recipe Nutrition Analyzer - Analyze recipe images and calculate nutrition facts",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -p 3000 -o",
+    "dev": "npx http-server -p 3000 -o"
+  },
+  "keywords": [
+    "recipe",
+    "nutrition",
+    "analyzer"
+  ],
+  "author": "",
+  "license": "MIT"
+}
